@@ -1,7 +1,8 @@
 export type PieceColor = 'w' | 'b';
 export type PieceType = 'p' | 'n' | 'b' | 'r' | 'q' | 'k';
-export type BoardMode = 'color' | 'bw';
+export type BoardMode = 'color' | 'hybrid' | 'bw';
 export type InteractionMode = 'play' | 'selection';
+export type LightColorFilter = 'all' | 'blue' | 'red' | 'disputed';
 
 export type Square =
   | 'a8' | 'b8' | 'c8' | 'd8' | 'e8' | 'f8' | 'g8' | 'h8'
@@ -69,6 +70,9 @@ export interface GameState {
   lastMove: { from: Square; to: Square } | null;
   halfMoves: number;
   fullMoves: number;
+  currentPly: number;
+  isReplay: boolean;
+  pgnHeaders: Record<string, string>;
 }
 
 export interface Ray {
@@ -80,6 +84,8 @@ export interface Ray {
   path: Square[]; // Ordered squares traversed
   isXray: boolean;
   intensity: number; // 1.0 for primary, 0.15 for X-ray
+  /** True when a sliding ray terminated (blocked by a piece or the board edge). */
+  blocked?: boolean;
 }
 
 export interface SquareOpticalState {
@@ -111,4 +117,20 @@ export interface PresetScenario {
   name: string;
   description: string;
   fen: string;
+}
+
+export type InfluenceTempo = 1 | 2 | 3;
+export type InfluenceDepth = 0 | 1 | 2 | 3;
+
+export interface InfluenceField {
+  root: Square;
+  color: PieceColor;
+  maxTempo: InfluenceDepth;
+  tempoBySquare: Record<Square, number>;
+}
+
+export interface InfluencePattern {
+  root: Square;
+  type: PieceType;
+  color: PieceColor;
 }

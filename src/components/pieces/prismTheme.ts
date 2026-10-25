@@ -1,4 +1,5 @@
 import { PieceColor } from '../../core/types';
+import { PiecePaint, mixHex, paintTintHex } from '../../core/paintEngine';
 
 export interface TranslucentPrismTheme {
   isWhite: boolean;
@@ -8,24 +9,45 @@ export interface TranslucentPrismTheme {
   strokeInner: string;
 }
 
-export function getTranslucentTheme(color: PieceColor): TranslucentPrismTheme {
-  const isWhite = color === 'w';
+interface BaseTheme {
+  glassFill: string;
+  glassInner: string;
+  stroke: string;
+  strokeInner: string;
+}
 
-  if (isWhite) {
-    return {
-      isWhite: true,
-      glassFill: '#2563eb',    // Solid, vivid royal cobalt blue
-      glassInner: '#60a5fa',   // Bright sky blue core facet
-      stroke: '#000000',       // Bold black border
-      strokeInner: '#bfdbfe'   // Crisp light facet line
-    };
+const WHITE_BASE: BaseTheme = {
+  glassFill: '#ffffff',    // Pure white body
+  glassInner: '#e2e8f0',   // Soft grey core facet
+  stroke: '#000000',       // Bold black border
+  strokeInner: '#64748b'   // Crisp slate facet line
+};
+
+const BLACK_BASE: BaseTheme = {
+  glassFill: '#000000',    // Pure black body
+  glassInner: '#374151',   // Dark grey core facet
+  stroke: '#000000',       // Bold black border
+  strokeInner: '#9ca3af'   // Crisp light facet line
+};
+
+export function getTranslucentTheme(
+  color: PieceColor,
+  paint?: PiecePaint | null
+): TranslucentPrismTheme {
+  const isWhite = color === 'w';
+  const base = isWhite ? WHITE_BASE : BLACK_BASE;
+
+  if (!paint || paint.strength <= 0) {
+    return { isWhite, ...base };
   }
 
+  const tint = paintTintHex(paint.hue, color);
+
   return {
-    isWhite: false,
-    glassFill: '#e11d48',    // Solid, vivid ruby crimson red
-    glassInner: '#fb7185',   // Bright rose red core facet
-    stroke: '#000000',       // Bold black border
-    strokeInner: '#fecdd3'   // Crisp light facet line
+    isWhite,
+    glassFill: mixHex(base.glassFill, tint, paint.strength),
+    glassInner: mixHex(base.glassInner, tint, paint.strength),
+    stroke: base.stroke,
+    strokeInner: base.strokeInner
   };
 }

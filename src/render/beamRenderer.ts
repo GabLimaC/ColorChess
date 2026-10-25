@@ -35,6 +35,25 @@ export function squareToCenter(
 }
 
 /**
+ * For rays blocked by an obstacle, stop the beam at the near boundary of the
+ * target square instead of running to its center, marking the impact point.
+ */
+function beamEndPoint(
+  start: { x: number; y: number },
+  center: { x: number; y: number },
+  squareSize: number
+): { x: number; y: number } {
+  const dx = center.x - start.x;
+  const dy = center.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len <= 0) return center;
+  const ux = dx / len;
+  const uy = dy / len;
+  const t = squareSize / 2 / Math.max(Math.abs(ux), Math.abs(uy));
+  return { x: center.x - ux * t, y: center.y - uy * t };
+}
+
+/**
  * Renders optical ray beams onto the canvas.
  * Beams only appear when a piece is actively selected, and are outlined with a black border.
  */
@@ -61,11 +80,15 @@ export function renderBeamsToCanvas(
   ctx.setLineDash([]);
 
   // Pre-calculate line endpoints
-  const lines = selectedRays.map(ray => ({
-    start: squareToCenter(ray.from, squareSize, flipped),
-    end: squareToCenter(ray.to, squareSize, flipped),
-    color: ray.sourcePiece.color === 'w' ? BEAM_COLORS.whiteLaser : BEAM_COLORS.blackLaser,
-  }));
+  const lines = selectedRays.map(ray => {
+    const start = squareToCenter(ray.from, squareSize, flipped);
+    const end = squareToCenter(ray.to, squareSize, flipped);
+    return {
+      start,
+      end: ray.blocked ? beamEndPoint(start, end, squareSize) : end,
+      color: ray.sourcePiece.color === 'w' ? BEAM_COLORS.whiteLaser : BEAM_COLORS.blackLaser,
+    };
+  });
 
   // 1. Draw outer black border for all selected beams
   ctx.lineWidth = 4.2;

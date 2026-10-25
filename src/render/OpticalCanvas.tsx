@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Square, OpticalField, BoardMode } from '../core/types';
+import { Square, OpticalField, BoardMode, InfluencePattern } from '../core/types';
 import { renderBoardToCanvas, BoardRenderOptions } from './boardRenderer';
 import { renderBeamsToCanvas, BeamRenderOptions } from './beamRenderer';
 
@@ -11,8 +11,13 @@ interface OpticalCanvasProps {
   hoverSquare: Square | null;
   opticalField?: OpticalField | null;
   affectedSquares?: Set<Square> | null;
+  influenceWash?: Record<Square, number> | null;
+  influenceHue?: number;
+  influencePattern?: InfluencePattern | null;
+  influenceTempoBySquare?: Record<Square, number> | null;
   boardMode?: BoardMode;
   showBeams?: boolean;
+  lightOpacity?: number;
   className?: string;
 }
 
@@ -24,8 +29,13 @@ export const OpticalCanvas: React.FC<OpticalCanvasProps> = ({
   hoverSquare,
   opticalField,
   affectedSquares,
+  influenceWash,
+  influenceHue,
+  influencePattern,
+  influenceTempoBySquare,
   boardMode = 'color',
   showBeams = false,
+  lightOpacity,
   className = ''
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -64,7 +74,12 @@ export const OpticalCanvas: React.FC<OpticalCanvasProps> = ({
       hoverSquare,
       opticalField,
       affectedSquares,
-      boardMode
+      influenceWash,
+      influenceHue,
+      influencePattern,
+      influenceTempoBySquare,
+      boardMode,
+      lightOpacity
     };
     renderBoardToCanvas(ctx, boardOptions);
 
@@ -81,7 +96,7 @@ export const OpticalCanvas: React.FC<OpticalCanvasProps> = ({
     }
 
     ctx.restore();
-  }, [flipped, selectedSquare, lastMove, checkSquare, hoverSquare, opticalField, affectedSquares, boardMode, showBeams]);
+  }, [flipped, selectedSquare, lastMove, checkSquare, hoverSquare, opticalField, affectedSquares, influenceWash, influenceHue, influencePattern, influenceTempoBySquare, boardMode, showBeams, lightOpacity]);
 
   useEffect(() => {
     draw();

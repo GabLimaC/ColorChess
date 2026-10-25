@@ -1,4 +1,4 @@
-import { Chess, Square as ChessJsSquare, PieceSymbol } from 'chess.js';
+import { Chess, Move, Square as ChessJsSquare, PieceSymbol } from 'chess.js';
 import {
   Square,
   BoardPiece,
@@ -63,6 +63,10 @@ export const PRESETS: PresetScenario[] = [
 export class OpticalChessGame {
   private chess: Chess;
   private moveRecords: MoveRecord[] = [];
+  private startFen: string | null = null;
+  private plyIndex = -1;
+  private isReplay = false;
+  private pgnHeaders: Record<string, string> = {};
 
   constructor(fen?: string) {
     this.chess = new Chess(fen);
@@ -86,6 +90,29 @@ export class OpticalChessGame {
         fenAfter: m.after
       });
     });
+    this.plyIndex = this.moveRecords.length - 1;
+  }
+
+  private clearReplayState() {
+    this.startFen = null;
+    this.plyIndex = -1;
+    this.isReplay = false;
+    this.pgnHeaders = {};
+  }
+
+  private static toMoveRecord(m: Move, idx: number): MoveRecord {
+    return {
+      id: `move-${idx + 1}`,
+      moveNumber: Math.floor(idx / 2) + 1,
+      from: m.from as Square,
+      to: m.to as Square,
+      san: m.san,
+      piece: m.piece as PieceType,
+      color: m.color as PieceColor,
+      captured: m.captured ? (m.captured as PieceType) : undefined,
+      promotion: m.promotion ? (m.promotion as PieceType) : undefined,
+      fenAfter: m.after
+    };
   }
 
   public getFen(): string {
@@ -205,6 +232,10 @@ export class OpticalChessGame {
 
       if (!moveResult) return false;
 
+      if (this.isReplay && this.plyIndex < this.moveRecords.length - 1) {
+        this.moveRecords = this.moveRecords.slice(0, this.plyIndex + 1);
+      }
+
       const moveIdx = this.moveRecords.length;
       this.moveRecords.push({
         id: `move-${moveIdx + 1}`,
@@ -219,6 +250,7 @@ export class OpticalChessGame {
         fenAfter: moveResult.after
       });
 
+      this.plyIndex = this.moveRecords.length - 1;
       return true;
     } catch {
       return false;
@@ -226,9 +258,20 @@ export class OpticalChessGame {
   }
 
   public undo(): boolean {
-    const undone = this.chess.undo();
-    if (!undone) return false;
+    // In replay the full game is already recorded: undo steps back one ply and keeps the
+    // continuation navigable. Only a fresh move truncates the remaining moves.
+    if (this.isReplay) {
+      if (this.plyIndex < 0) return false;
+      return this.seekToPly(this.plyIndex - 1);
+    }
+
+    if (this.moveRecords.length === 0) return false;
     this.moveRecords.pop();
+    const last = this.moveRecords[this.moveRecords.length - 1];
+    if (last) this.chess.load(last.fenAfter);
+    else if (this.startFen) this.chess.load(this.startFen);
+    else this.chess.reset();
+    this.plyIndex = this.moveRecords.length - 1;
     return true;
   }
 
@@ -238,17 +281,64 @@ export class OpticalChessGame {
     } else {
       this.chess.reset();
     }
+    this.clearReplayState();
     this.rebuildHistoryFromEngine();
   }
 
   public loadFen(fen: string): boolean {
     try {
       this.chess.load(fen);
-      this.rebuildHistoryFromEngine();
-      return true;
     } catch {
       return false;
     }
+    this.clearReplayState();
+    this.rebuildHistoryFromEngine();
+    return true;
+  }
+
+  /**
+   * Imports a PGN game for replay. Parsing happens on a throwaway engine instance so a
+   * malformed PGN can never corrupt the live board.
+   */
+  public loadPgn(pgn: string): boolean {
+    if (!pgn.trim()) return false;
+
+    let headers: Record<string, string>;
+    let verbose: Move[];
+    let startFen: string;
+    try {
+      const parser = new Chess();
+      parser.loadPgn(pgn);
+      headers = parser.getHeaders();
+      verbose = parser.history({ verbose: true });
+      while (parser.undo()) {
+        // rewind to the position before move 1
+      }
+      startFen = parser.fen();
+    } catch {
+      return false;
+    }
+
+    this.moveRecords = verbose.map((m, idx) => OpticalChessGame.toMoveRecord(m, idx));
+    this.startFen = startFen;
+    this.pgnHeaders = headers;
+    this.isReplay = true;
+    this.plyIndex = -1;
+    // The engine's own move history is wiped by load(), so replay seeks are snapshot-based.
+    this.chess.load(startFen);
+    return true;
+  }
+
+  public seekToPly(ply: number): boolean {
+    if (!Number.isInteger(ply) || ply < -1 || ply >= this.moveRecords.length) return false;
+    const fen = ply === -1 ? (this.startFen ?? this.chess.fen()) : this.moveRecords[ply].fenAfter;
+    try {
+      this.chess.load(fen);
+    } catch {
+      return false;
+    }
+    this.plyIndex = ply;
+    return true;
   }
 
   /**
@@ -336,6 +426,7 @@ export class OpticalChessGame {
 
   public getGameState(): GameState {
     const lastRecord = this.moveRecords[this.moveRecords.length - 1];
+    const activeRecord = this.isReplay ? this.moveRecords[this.plyIndex] : lastRecord;
     return {
       fen: this.getFen(),
       turn: this.getTurn(),
@@ -349,9 +440,12 @@ export class OpticalChessGame {
       winner: this.getWinner(),
       moveHistory: [...this.moveRecords],
       capturedPieces: this.getCapturedPieces(),
-      lastMove: lastRecord ? { from: lastRecord.from, to: lastRecord.to } : null,
+      lastMove: activeRecord ? { from: activeRecord.from, to: activeRecord.to } : null,
       halfMoves: 0,
-      fullMoves: Math.floor(this.moveRecords.length / 2) + 1
+      fullMoves: Math.floor(this.moveRecords.length / 2) + 1,
+      currentPly: this.plyIndex,
+      isReplay: this.isReplay,
+      pgnHeaders: { ...this.pgnHeaders }
     };
   }
 }

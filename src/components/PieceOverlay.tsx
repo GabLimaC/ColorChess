@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Square, BoardPiece, LegalMove, PieceType, PieceColor, InteractionMode } from '../core/types';
+import { PiecePaintMap } from '../core/paintEngine';
 import { PiecePrism, PieceStyle } from './pieces/PiecePrism';
 
 export function squareToColRow(square: Square, flipped: boolean): { col: number; row: number } {
@@ -24,9 +25,11 @@ interface PieceOverlayProps {
   selectedSquare: Square | null;
   legalMoves: LegalMove[];
   checkSquare: Square | null;
+  lastMove?: { from: Square; to: Square } | null;
   pieceStyle?: PieceStyle;
   interactionMode?: InteractionMode;
   selectedSquares?: Set<Square>;
+  piecePaints?: PiecePaintMap | null;
   onTogglePieceSelect?: (square: Square) => void;
   onClearSelection?: () => void;
   onSelectSquare: (square: Square | null) => void;
@@ -54,6 +57,8 @@ export const PieceOverlay: React.FC<PieceOverlayProps> = ({
   pieceStyle = 'custom',
   interactionMode = 'play',
   selectedSquares,
+  piecePaints,
+  lastMove,
   onTogglePieceSelect,
   onClearSelection,
   onSelectSquare,
@@ -262,6 +267,30 @@ export const PieceOverlay: React.FC<PieceOverlayProps> = ({
         );
       })}
 
+      {/* Last move marker: destination square of the most recent move */}
+      {!isSelectionMode && lastMove && (() => {
+        const moverColor = pieces.find(p => p.square === lastMove.to)?.color ?? turn;
+        const { col, row } = squareToColRow(lastMove.to, flipped);
+        const tone =
+          moverColor === 'w'
+            ? 'border-[4px] border-sky-700 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.85)]'
+            : 'border-[4px] border-rose-700 shadow-[inset_0_0_0_2px_rgba(255,255,255,0.85)]';
+
+        return (
+          <div
+            key={`last-move-${lastMove.to}`}
+            style={{
+              position: 'absolute',
+              left: `${col * 12.5}%`,
+              top: `${row * 12.5}%`,
+              width: '12.5%',
+              height: '12.5%'
+            }}
+            className={`pointer-events-none ${tone}`}
+          />
+        );
+      })()}
+
       {/* Static / Base Pieces (With clear selection indicator in selection and play mode) */}
       {pieces.map(piece => {
         const isBeingDragged = dragState?.piece.id === piece.id;
@@ -269,6 +298,8 @@ export const PieceOverlay: React.FC<PieceOverlayProps> = ({
         const isSelected = isSelectionMode
           ? (selectedSquares?.has(piece.square) ?? false)
           : selectedSquare === piece.square;
+        const isLastMoved =
+          !isSelectionMode && !isSelected && !isBeingDragged && lastMove?.to === piece.square;
 
         return (
           <div
@@ -293,13 +324,18 @@ export const PieceOverlay: React.FC<PieceOverlayProps> = ({
                   ? piece.color === 'w'
                     ? 'ring-2 ring-sky-500 bg-sky-500/20 shadow-sm'
                     : 'ring-2 ring-rose-500 bg-rose-500/20 shadow-sm'
-                  : ''
+                  : isLastMoved
+                    ? piece.color === 'w'
+                      ? 'drop-shadow-[0_0_8px_rgba(2,132,199,0.95)]'
+                      : 'drop-shadow-[0_0_8px_rgba(190,18,60,0.95)]'
+                    : ''
               }`}
             >
               <PiecePrism
                 type={piece.type}
                 color={piece.color}
                 pieceStyle={pieceStyle}
+                paint={piecePaints?.[piece.square] ?? null}
               />
             </div>
           </div>
@@ -324,6 +360,7 @@ export const PieceOverlay: React.FC<PieceOverlayProps> = ({
             type={dragState.piece.type}
             color={dragState.piece.color}
             pieceStyle={pieceStyle}
+            paint={piecePaints?.[dragState.piece.square] ?? null}
           />
         </div>
       )}

@@ -1,15 +1,17 @@
 import React from 'react';
 import { PieceColor } from '../../core/types';
 import { getTranslucentTheme } from './prismTheme';
+import { PiecePaint } from '../../core/paintEngine';
 
 interface PieceProps {
   color: PieceColor;
   className?: string;
   isCheck?: boolean;
+  paint?: PiecePaint | null;
 }
 
-export const QueenPrism: React.FC<PieceProps> = ({ color, className = '' }) => {
-  const theme = getTranslucentTheme(color);
+export const QueenPrism: React.FC<PieceProps> = ({ color, className = '', paint }) => {
+  const theme = getTranslucentTheme(color, paint);
 
   const angles = [0, 45, 90, 135, 180, 225, 270, 315];
   const rOuter = 36;

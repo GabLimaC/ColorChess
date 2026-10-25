@@ -62,7 +62,7 @@ export const StatusHUD: React.FC<StatusHUDProps> = ({
               Active Emission
             </div>
             <div className="text-sm font-semibold tracking-wide text-slate-900 flex items-center space-x-1.5">
-              <span>{isWhite ? 'White (Cobalt Blue Core)' : 'Black (Ruby Red Core)'}</span>
+              <span>{isWhite ? 'White (Ivory Core)' : 'Black (Onyx Core)'}</span>
               <span className="text-slate-500 font-normal">to move</span>
             </div>
           </div>

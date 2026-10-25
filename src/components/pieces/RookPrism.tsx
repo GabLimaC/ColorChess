@@ -1,15 +1,17 @@
 import React from 'react';
 import { PieceColor } from '../../core/types';
 import { getTranslucentTheme } from './prismTheme';
+import { PiecePaint } from '../../core/paintEngine';
 
 interface PieceProps {
   color: PieceColor;
   className?: string;
   isCheck?: boolean;
+  paint?: PiecePaint | null;
 }
 
-export const RookPrism: React.FC<PieceProps> = ({ color, className = '' }) => {
-  const theme = getTranslucentTheme(color);
+export const RookPrism: React.FC<PieceProps> = ({ color, className = '', paint }) => {
+  const theme = getTranslucentTheme(color, paint);
 
   return (
     <svg

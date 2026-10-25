@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { Square, BoardPiece, LegalMove, PieceType, PieceColor, OpticalField, BoardMode, InteractionMode } from '../core/types';
+import { Square, BoardPiece, LegalMove, PieceType, PieceColor, OpticalField, BoardMode, InteractionMode, InfluencePattern } from '../core/types';
+import { PiecePaintMap } from '../core/paintEngine';
 import { OpticalCanvas } from '../render/OpticalCanvas';
 import { PieceOverlay } from './PieceOverlay';
 import { PromotionModal } from './PromotionModal';
@@ -15,11 +16,17 @@ interface ChessBoardProps {
   isCheck: boolean;
   opticalField: OpticalField;
   showBeams: boolean;
+  lightOpacity?: number;
   pieceStyle?: PieceStyle;
   boardMode?: BoardMode;
   interactionMode?: InteractionMode;
   selectedSquares?: Set<Square>;
+  piecePaints?: PiecePaintMap | null;
   affectedSquares?: Set<Square> | null;
+  influenceWash?: Record<Square, number> | null;
+  influenceHue?: number;
+  influencePattern?: InfluencePattern | null;
+  influenceTempoBySquare?: Record<Square, number> | null;
   hoverSquare?: Square | null;
   onHoverSquareChange?: (square: Square | null) => void;
   onSelectSquare: (square: Square | null) => void;
@@ -39,11 +46,17 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
   isCheck,
   opticalField,
   showBeams,
+  lightOpacity,
   pieceStyle = 'custom',
   boardMode = 'color',
   interactionMode = 'play',
   selectedSquares,
+  piecePaints,
   affectedSquares,
+  influenceWash,
+  influenceHue,
+  influencePattern,
+  influenceTempoBySquare,
   hoverSquare,
   onHoverSquareChange,
   onSelectSquare,
@@ -98,8 +111,13 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
           hoverSquare={activeHoverSquare}
           opticalField={opticalField}
           affectedSquares={affectedSquares}
+          influenceWash={influenceWash}
+          influenceHue={influenceHue}
+          influencePattern={influencePattern}
+          influenceTempoBySquare={influenceTempoBySquare}
           boardMode={boardMode}
           showBeams={showBeams}
+          lightOpacity={lightOpacity}
           className="absolute inset-0"
         />
 
@@ -111,9 +129,11 @@ export const ChessBoard: React.FC<ChessBoardProps> = ({
           selectedSquare={selectedSquare}
           legalMoves={legalMoves}
           checkSquare={checkSquare}
+          lastMove={lastMove}
           pieceStyle={pieceStyle}
           interactionMode={interactionMode}
           selectedSquares={selectedSquares}
+          piecePaints={piecePaints}
           onTogglePieceSelect={onTogglePieceSelect}
           onClearSelection={onClearSelection}
           onSelectSquare={onSelectSquare}

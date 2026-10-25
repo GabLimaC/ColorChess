@@ -3,7 +3,8 @@ import {
   BoardPiece,
   Ray,
   SquareOpticalState,
-  OpticalField
+  OpticalField,
+  PieceType
 } from './types';
 import {
   ALL_SQUARES,
@@ -20,6 +21,10 @@ import {
 export interface OpticalEngineOptions {
   xrayTransmission?: number;
   useLogSaturation?: boolean;
+  /** Piece types allowed to emit light. All pieces still block physically. */
+  emissionTypes?: Set<PieceType>;
+  /** Filter emitted light by color: only white/blue, only black/red, both, or only contested squares. */
+  lightColorFilter?: 'all' | 'blue' | 'red' | 'disputed';
 }
 
 export function computeOpticalField(
@@ -27,6 +32,8 @@ export function computeOpticalField(
   options: OpticalEngineOptions = {}
 ): OpticalField {
   const useLogSat = options.useLogSaturation ?? false;
+  const emissionTypes = options.emissionTypes;
+  const lightColorFilter = options.lightColorFilter ?? 'all';
 
   // Map piece locations for quick O(1) occupancy lookup
   const pieceMap = new Map<Square, BoardPiece>();
@@ -56,6 +63,11 @@ export function computeOpticalField(
 
   // Helper to add rays
   for (const piece of pieces) {
+    // Pieces are still physical blockers, but only enabled types emit light
+    if (emissionTypes && !emissionTypes.has(piece.type)) continue;
+    // Only selected light color is emitted when a filter is active
+    if (lightColorFilter === 'blue' && piece.color !== 'w') continue;
+    if (lightColorFilter === 'red' && piece.color !== 'b') continue;
     const isWhite = piece.color === 'w';
     const { file: f, rank: r } = squareToFileRank(piece.square);
 
@@ -166,12 +178,17 @@ export function computeOpticalField(
         for (const [df, dr] of directions) {
           let step = 1;
           const primaryPath: Square[] = [];
+          let blocked = false;
 
           while (true) {
             const curFile = f + df * step;
             const curRank = r + dr * step;
             const curSq = fileRankToSquare(curFile, curRank);
-            if (!curSq) break; // Reached board boundary
+            if (!curSq) {
+              // Reached board boundary: ray terminates at the edge square
+              blocked = true;
+              break;
+            }
 
             primaryPath.push(curSq);
             if (isWhite) {
@@ -183,6 +200,7 @@ export function computeOpticalField(
             const pieceAtSq = pieceMap.get(curSq);
             if (pieceAtSq) {
               // Physical obstacle hit: strict 100% occlusion terminates ray on this square
+              blocked = true;
               break;
             }
 
@@ -199,7 +217,8 @@ export function computeOpticalField(
               to: primaryPath[primaryPath.length - 1],
               path: primaryPath,
               isXray: false,
-              intensity: 1.0
+              intensity: 1.0,
+              blocked
             });
           }
         }
@@ -221,10 +240,16 @@ export function computeOpticalField(
     const totalB = acc.primaryBlue;
     const totalR = acc.primaryRed;
 
-    totalBlueFlux += totalB;
-    totalRedFlux += totalR;
+    // Disputed mode: only squares claimed by both colors are visible light
+    const isLit =
+      lightColorFilter === 'disputed'
+        ? totalB > 0.001 && totalR > 0.001
+        : totalB + totalR > 0.001;
 
-    const isLit = totalB + totalR > 0.001;
+    if (isLit) {
+      totalBlueFlux += totalB;
+      totalRedFlux += totalR;
+    }
 
     let hue = 240;
     let saturation = 0;

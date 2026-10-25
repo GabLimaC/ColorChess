@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { PRESETS } from '../core/chessGame';
-import { PresetScenario, BoardMode, InteractionMode } from '../core/types';
+import { PresetScenario, BoardMode, InteractionMode, InfluenceTempo } from '../core/types';
 import { PieceStyle } from './pieces/PiecePrism';
 import {
   RotateCcw,
@@ -12,7 +12,10 @@ import {
   ChevronDown,
   Shapes,
   Palette,
-  MousePointerClick
+  MousePointerClick,
+  Eye,
+  EyeOff,
+  FileUp
 } from 'lucide-react';
 
 interface GameControlsProps {
@@ -25,6 +28,8 @@ interface GameControlsProps {
   selectedCount?: number;
   whitePieceCount?: number;
   blackPieceCount?: number;
+  influenceView?: boolean;
+  influenceTempo?: InfluenceTempo;
   onReset: () => void;
   onUndo: () => void;
   onFlip: () => void;
@@ -37,6 +42,9 @@ interface GameControlsProps {
   onSelectAll?: () => void;
   onLoadPreset: (preset: PresetScenario) => void;
   onLoadCustomFen: (fen: string) => boolean;
+  onLoadPgn: (pgn: string) => boolean;
+  onToggleInfluenceView?: () => void;
+  onChangeInfluenceTempo?: (tempo: InfluenceTempo) => void;
   className?: string;
 }
 
@@ -62,12 +70,19 @@ export const GameControls: React.FC<GameControlsProps> = ({
   onSelectAll,
   onLoadPreset,
   onLoadCustomFen,
+  onLoadPgn,
+  influenceView = false,
+  influenceTempo = 1,
+  onToggleInfluenceView,
+  onChangeInfluenceTempo,
   className = ''
 }) => {
   const [showPresetsMenu, setShowPresetsMenu] = useState(false);
   const [customFenInput, setCustomFenInput] = useState('');
   const [fenError, setFenError] = useState(false);
   const [copiedFen, setCopiedFen] = useState(false);
+  const [pgnInput, setPgnInput] = useState('');
+  const [pgnError, setPgnError] = useState(false);
 
   const handleApplyCustomFen = (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +104,30 @@ export const GameControls: React.FC<GameControlsProps> = ({
     } catch {
       // Fallback
     }
+  };
+
+  const handleLoadPgn = () => {
+    if (!pgnInput.trim()) return;
+    const success = onLoadPgn(pgnInput.trim());
+    if (success) {
+      setPgnInput('');
+      setPgnError(false);
+    } else {
+      setPgnError(true);
+    }
+  };
+
+  const handlePgnFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setPgnInput(text);
+      setPgnError(false);
+    } catch {
+      setPgnError(true);
+    }
+    e.target.value = '';
   };
 
   return (
@@ -160,6 +199,64 @@ export const GameControls: React.FC<GameControlsProps> = ({
         </div>
       </div>
 
+      {/* Piece Influence View: play mode only */}
+      {interactionMode === 'play' && (
+        <div className="p-2 rounded-lg bg-slate-50 border border-slate-300 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-xs font-mono text-slate-700">
+              {influenceView ? (
+                <Eye className="w-3.5 h-3.5 text-sky-600" />
+              ) : (
+                <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+              )}
+              <span>Piece Influence View</span>
+            </div>
+            <button
+              onClick={onToggleInfluenceView}
+              className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-semibold transition-all ${
+                influenceView
+                  ? 'bg-sky-50 border-sky-300 text-sky-800 shadow-xs'
+                  : 'bg-slate-100 border-slate-300 text-slate-500'
+              }`}
+              title="Toggle tempo-layered safe landing squares for the selected piece"
+            >
+              <span className={`w-2 h-2 rounded-full ${influenceView ? 'bg-sky-500 animate-pulse' : 'bg-slate-400'}`} />
+              <span>{influenceView ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+
+          {influenceView && (
+            <>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-600">Tempo</span>
+                <div className="flex items-center space-x-1 bg-white p-0.5 rounded-md border border-slate-300">
+                  {([1, 2, 3] as const).map(t => (
+                    <button
+                      key={t}
+                      onClick={() => onChangeInfluenceTempo?.(t)}
+                      aria-label={`Show squares reachable within ${t} tempo${t > 1 ? 's' : ''}`}
+                      title={`Within ${t} tempo${t > 1 ? 's' : ''}`}
+                      className={`px-2.5 py-1 rounded text-[11px] font-mono font-semibold transition-all ${
+                        influenceTempo === t
+                          ? 'bg-slate-900 text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[10px] font-mono leading-relaxed text-slate-500">
+                100% = 1 tempo · 50% = 2 · 25% = 3. Solid / dashed / dotted outlines mark
+                the 1 / 2 / 3 tempo layers. Hover a legal move to preview its vision.
+                Safe = not attacked by the opponent.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Selection Mode Quick Controls */}
       {interactionMode === 'selection' && (
         <div className="p-2.5 rounded-lg bg-sky-50/70 border border-sky-200 text-xs font-mono space-y-2">
@@ -222,6 +319,17 @@ export const GameControls: React.FC<GameControlsProps> = ({
             title="Optical chromatic tension & control fields"
           >
             Color
+          </button>
+          <button
+            onClick={() => onToggleBoardMode('hybrid')}
+            className={`px-2.5 py-1 rounded text-[11px] font-mono font-semibold transition-all ${
+              boardMode === 'hybrid'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Optical light fields on a white/grey checkerboard"
+          >
+            Hybrid
           </button>
           <button
             onClick={() => onToggleBoardMode('bw')}
@@ -346,6 +454,59 @@ export const GameControls: React.FC<GameControlsProps> = ({
             Invalid FEN string format. Please verify and retry.
           </div>
         )}
+      </div>
+
+      {/* PGN Import & Replay Loader */}
+      <div className="pt-2 border-t border-slate-200 space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-mono text-slate-500 uppercase tracking-wider">
+            PGN Import
+          </span>
+          <label
+            className="flex items-center space-x-1 text-[11px] font-mono text-slate-600 hover:text-sky-600 transition-colors cursor-pointer"
+            title="Read a .pgn file into the textarea"
+          >
+            <FileUp className="w-3 h-3" />
+            <span>File</span>
+            <input
+              type="file"
+              accept=".pgn,application/x-chess-pgn,text/plain"
+              className="hidden"
+              onChange={handlePgnFile}
+            />
+          </label>
+        </div>
+
+        <textarea
+          rows={5}
+          placeholder="Paste PGN game export here..."
+          value={pgnInput}
+          onChange={e => {
+            setPgnInput(e.target.value);
+            setPgnError(false);
+          }}
+          className={`w-full bg-slate-50 border ${
+            pgnError ? 'border-rose-500 text-rose-700' : 'border-slate-300 text-slate-800'
+          } rounded-lg px-2.5 py-1.5 text-xs font-mono resize-y focus:outline-none focus:border-sky-500 transition-colors placeholder:text-slate-400`}
+        />
+
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 text-[10px] font-mono text-rose-600">
+            {pgnError ? 'Invalid PGN. Verify and retry.' : ''}
+          </div>
+          <button
+            type="button"
+            onClick={handleLoadPgn}
+            disabled={!pgnInput.trim()}
+            className={`px-3 py-1.5 border rounded-lg text-xs font-mono transition-colors ${
+              pgnInput.trim()
+                ? 'bg-slate-100 hover:bg-slate-200 border-slate-300 text-slate-800'
+                : 'bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            Load &amp; Replay
+          </button>
+        </div>
       </div>
     </div>
   );

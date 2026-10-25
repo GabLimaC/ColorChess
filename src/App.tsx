@@ -1,7 +1,25 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { OpticalChessGame } from './core/chessGame';
-import { Square, PieceType, PresetScenario, BoardMode, InteractionMode } from './core/types';
+import {
+  Square,
+  PieceType,
+  PresetScenario,
+  BoardMode,
+  InteractionMode,
+  InfluenceDepth,
+  InfluenceTempo,
+  LightColorFilter
+} from './core/types';
 import { computeOpticalField } from './core/opticalEngine';
+import { computePiecePaints } from './core/paintEngine';
+import {
+  buildInfluenceWash,
+  computeInfluenceField,
+  computeInfluenceFieldAfterMove,
+  INFLUENCE_TEMPO_ALPHA,
+  tempoMapToWash
+} from './core/influenceEngine';
+import { sideHue } from './render/lightTypes';
 import { ChessBoard } from './components/ChessBoard';
 import { ControlSpectrumReference } from './components/ControlSpectrumReference';
 import { StatusHUD } from './components/StatusHUD';
@@ -9,12 +27,15 @@ import { CapturedTray } from './components/CapturedTray';
 import { MoveHistory } from './components/MoveHistory';
 import { GameControls } from './components/GameControls';
 import { OpticalHUD } from './components/OpticalHUD';
+import { LightTypeLegend } from './components/LightTypeLegend';
 import { PieceStyle } from './components/pieces/PiecePrism';
-import { Sparkles, Compass, ShieldCheck } from 'lucide-react';
+import { MovementVisualizerPage } from './visualizer/MovementVisualizerPage';
+import { Sparkles, Compass, ShieldCheck, Grid3x3 } from 'lucide-react';
 
 export const App: React.FC = () => {
   // Initialize chess engine
   const [game] = useState(() => new OpticalChessGame());
+  const [view, setView] = useState<'lab' | 'visualizer'>('lab');
   const [version, setVersion] = useState(0); // Trigger re-render on game mutation
   const [flipped, setFlipped] = useState(false);
   const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
@@ -22,8 +43,16 @@ export const App: React.FC = () => {
   const [interactionMode, setInteractionMode] = useState<InteractionMode>('play');
   const [hoverSquare, setHoverSquare] = useState<Square | null>(null);
   const [showBeams, setShowBeams] = useState(true);
-  const [pieceStyle, setPieceStyle] = useState<PieceStyle>('custom');
+  const [lightOpacity, setLightOpacity] = useState(0.55);
+  const [emissionTypes, setEmissionTypes] = useState<Set<PieceType>>(
+    () => new Set(['p', 'n', 'b', 'r', 'q', 'k'])
+  );
+  const [savedEmissionTypes, setSavedEmissionTypes] = useState<Set<PieceType> | null>(null);
+  const [pieceStyle, setPieceStyle] = useState<PieceStyle>('classic');
   const [boardMode, setBoardMode] = useState<BoardMode>('color');
+  const [influenceView, setInfluenceView] = useState(false);
+  const [influenceTempo, setInfluenceTempo] = useState<InfluenceTempo>(1);
+  const [lightColorFilter, setLightColorFilter] = useState<LightColorFilter>('all');
 
   // Sync state from engine
   const gameState = useMemo(() => {
@@ -47,8 +76,8 @@ export const App: React.FC = () => {
   }, [game, selectedSquare, interactionMode, version]);
 
   const opticalField = useMemo(() => {
-    return computeOpticalField(pieces);
-  }, [pieces]);
+    return computeOpticalField(pieces, { emissionTypes, lightColorFilter });
+  }, [pieces, emissionTypes, lightColorFilter]);
 
   // Explore future move: when a piece is selected and user hovers over a legal destination square,
   // simulate the move and project how the entire board will look
@@ -60,16 +89,23 @@ export const App: React.FC = () => {
     const simulatedPieces = game.getSimulatedPiecesAfterMove(selectedSquare, hoverSquare);
     if (!simulatedPieces) return null;
 
-    const simulatedField = computeOpticalField(simulatedPieces);
+    const simulatedField = computeOpticalField(simulatedPieces, { emissionTypes, lightColorFilter });
     return {
       pieces: simulatedPieces,
       opticalField: simulatedField,
       targetSquare: hoverSquare
     };
-  }, [game, selectedSquare, hoverSquare, legalMoves, interactionMode]);
+  }, [game, selectedSquare, hoverSquare, legalMoves, interactionMode, emissionTypes, lightColorFilter]);
 
   const activePieces = previewData?.pieces ?? pieces;
   const activeOpticalField = previewData?.opticalField ?? opticalField;
+
+  // Partial paint on occupied squares: defended -> team hue, attacked -> opposing hue,
+  // both -> resulting green standoff. Pieces seen by no ray keep their base color.
+  const piecePaints = useMemo(
+    () => computePiecePaints(activePieces, activeOpticalField),
+    [activePieces, activeOpticalField]
+  );
 
   // Highlight all squares affected by the selected piece(s) with a black border
   // In selection mode: union of influence for all selected pieces (any side)
@@ -103,6 +139,87 @@ export const App: React.FC = () => {
     }
     return squares;
   }, [interactionMode, selectedSquares, previewData, selectedSquare, opticalField]);
+
+  // Piece Influence View: tempo-layered safe landing squares for the selected piece
+  const selectedPiece = useMemo(() => {
+    if (!selectedSquare) return null;
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    version;
+    return game.getPieceAt(selectedSquare);
+  }, [game, selectedSquare, version]);
+
+  const influenceHue = useMemo(
+    () => (selectedPiece ? sideHue(selectedPiece.color) : 240),
+    [selectedPiece]
+  );
+
+  const influenceDisplay = useMemo(() => {
+    if (!influenceView || interactionMode !== 'play' || !selectedSquare || !selectedPiece) {
+      return null;
+    }
+
+    if (previewData) {
+      const field =
+        influenceTempo >= 2
+          ? computeInfluenceFieldAfterMove(
+              game.getFen(),
+              selectedSquare,
+              previewData.targetSquare,
+              (influenceTempo - 1) as InfluenceDepth
+            )
+          : null;
+
+      const layers = {} as Record<Square, number>;
+      const tempoBySquare = {} as Record<Square, number>;
+
+      if (field) {
+        for (const [square, tempo] of Object.entries(field.tempoBySquare)) {
+          if (tempo <= 0) continue;
+          const displayTempo = Math.min(3, tempo + 1);
+          layers[square as Square] = displayTempo;
+          tempoBySquare[square as Square] = displayTempo;
+        }
+      }
+
+      layers[previewData.targetSquare] = 1;
+      for (const square of affectedSquares) {
+        layers[square] = 1;
+      }
+
+      return {
+        wash: tempoMapToWash(layers, INFLUENCE_TEMPO_ALPHA),
+        tempoBySquare,
+        pattern: {
+          root: previewData.targetSquare,
+          type: selectedPiece.type,
+          color: selectedPiece.color
+        }
+      };
+    }
+
+    const field = computeInfluenceField(game.getFen(), selectedSquare, influenceTempo);
+    if (!field) return null;
+
+    return {
+      wash: buildInfluenceWash(field, INFLUENCE_TEMPO_ALPHA),
+      tempoBySquare: field.tempoBySquare,
+      pattern: {
+        root: field.root,
+        type: selectedPiece.type,
+        color: selectedPiece.color
+      }
+    };
+  }, [
+    influenceView,
+    interactionMode,
+    selectedSquare,
+    selectedPiece,
+    previewData,
+    affectedSquares,
+    game,
+    influenceTempo,
+    version
+  ]);
 
   // Handlers
   const handleSelectSquare = useCallback((square: Square | null) => {
@@ -191,6 +308,59 @@ export const App: React.FC = () => {
     setShowBeams(s => !s);
   }, []);
 
+  const handleChangeLightOpacity = useCallback((value: number) => {
+    setLightOpacity(Math.min(1, Math.max(0, value)));
+  }, []);
+
+  const handleToggleEmissionType = useCallback((type: PieceType) => {
+    setEmissionTypes(prev => {
+      const next = new Set(prev);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleEnableAllEmission = useCallback(() => {
+    const allOn = new Set(['p', 'n', 'b', 'r', 'q', 'k'] as PieceType[]);
+    if (emissionTypes.size === allOn.size) {
+      // Toggling back: restore the previous per-type selection
+      setEmissionTypes(savedEmissionTypes ? new Set(savedEmissionTypes) : allOn);
+    } else {
+      setSavedEmissionTypes(new Set(emissionTypes));
+      setEmissionTypes(allOn);
+    }
+  }, [emissionTypes, savedEmissionTypes]);
+
+  const handleDisableAllEmission = useCallback(() => {
+    if (emissionTypes.size === 0) {
+      // Toggling back: restore the previous per-type selection
+      setEmissionTypes(
+        savedEmissionTypes && savedEmissionTypes.size > 0
+          ? new Set(savedEmissionTypes)
+          : new Set(['p', 'n', 'b', 'r', 'q', 'k'] as PieceType[])
+      );
+    } else {
+      setSavedEmissionTypes(new Set(emissionTypes));
+      setEmissionTypes(new Set());
+    }
+  }, [emissionTypes, savedEmissionTypes]);
+
+  const handleToggleInfluenceView = useCallback(() => {
+    setInfluenceView(v => !v);
+  }, []);
+
+  const handleChangeLightColorFilter = useCallback((filter: LightColorFilter) => {
+    setLightColorFilter(filter);
+  }, []);
+
+  const handleChangeInfluenceTempo = useCallback((tempo: InfluenceTempo) => {
+    setInfluenceTempo(tempo);
+  }, []);
+
   const handleLoadPreset = useCallback((preset: PresetScenario) => {
     game.loadFen(preset.fen);
     setSelectedSquare(null);
@@ -208,6 +378,74 @@ export const App: React.FC = () => {
     }
     return false;
   }, [game]);
+
+  const handleLoadPgn = useCallback((pgn: string): boolean => {
+    const success = game.loadPgn(pgn);
+    if (success) {
+      setSelectedSquare(null);
+      setSelectedSquares(new Set());
+      setHoverSquare(null);
+      setVersion(v => v + 1);
+      return true;
+    }
+    return false;
+  }, [game]);
+
+  const handleSeek = useCallback((ply: number) => {
+    const success = game.seekToPly(ply);
+    if (success) {
+      setSelectedSquare(null);
+      setSelectedSquares(new Set());
+      setHoverSquare(null);
+      setVersion(v => v + 1);
+    }
+  }, [game]);
+
+  // Keyboard replay navigation: ←/↑ previous ply, →/↓ next ply, Home start, End final position
+  useEffect(() => {
+    if (!gameState.isReplay) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const currentPly = game.getGameState().currentPly;
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+          e.preventDefault();
+          handleSeek(currentPly - 1);
+          break;
+        case 'ArrowRight':
+        case 'ArrowDown':
+          e.preventDefault();
+          handleSeek(currentPly + 1);
+          break;
+        case 'Home':
+          e.preventDefault();
+          handleSeek(-1);
+          break;
+        case 'End':
+          e.preventDefault();
+          handleSeek(game.getGameState().moveHistory.length - 1);
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [game, gameState.isReplay, handleSeek]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-sky-500/20 selection:text-sky-800">
@@ -228,12 +466,40 @@ export const App: React.FC = () => {
                 </span>
               </div>
               <p className="text-xs text-slate-500">
-                Light-Field Engine & Top-Down Optical Beam Manipulators
+                {view === 'visualizer'
+                  ? '16 × 16 Movement Field Explorer'
+                  : 'Light-Field Engine & Top-Down Optical Beam Manipulators'}
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-4 text-xs font-mono text-slate-500">
+            <div className="flex items-center space-x-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <button
+                onClick={() => setView('lab')}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold transition-all ${
+                  view === 'lab'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Optical chess laboratory"
+              >
+                Chess Lab
+              </button>
+              <button
+                onClick={() => setView('visualizer')}
+                className={`flex items-center space-x-1 px-2.5 py-1 rounded-md text-[11px] font-mono font-semibold transition-all ${
+                  view === 'visualizer'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="16 × 16 movement visualizer"
+              >
+                <Grid3x3 className="w-3 h-3" />
+                <span className="hidden sm:inline">Movement Visualizer</span>
+              </button>
+            </div>
+
             <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
               <span>FIDE Engine Active</span>
@@ -244,8 +510,11 @@ export const App: React.FC = () => {
 
       {/* Main Play Area Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+        {view === 'visualizer' ? (
+          <MovementVisualizerPage />
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left / Center Column: Board, Turn HUD, Captured Tray */}
+          {/* Left / Center Column: Board, Turn HUD, Transmission Log, Captured Tray */}
           <div className="lg:col-span-7 xl:col-span-8 space-y-4">
             {/* Turn & Status HUD */}
             <StatusHUD
@@ -272,13 +541,19 @@ export const App: React.FC = () => {
                     isCheck={gameState.isCheck}
                     opticalField={activeOpticalField}
                     affectedSquares={affectedSquares}
+                    influenceWash={influenceDisplay?.wash ?? null}
+                    influenceHue={influenceHue}
+                    influencePattern={influenceDisplay?.pattern ?? null}
+                    influenceTempoBySquare={influenceDisplay?.tempoBySquare ?? null}
                     hoverSquare={hoverSquare}
                     onHoverSquareChange={setHoverSquare}
                     showBeams={showBeams}
+                    lightOpacity={lightOpacity}
                     pieceStyle={pieceStyle}
                     boardMode={boardMode}
                     interactionMode={interactionMode}
                     selectedSquares={selectedSquares}
+                    piecePaints={piecePaints}
                     onSelectSquare={handleSelectSquare}
                     onTogglePieceSelect={handleTogglePieceSelect}
                     onClearSelection={handleClearSelection}
@@ -286,6 +561,17 @@ export const App: React.FC = () => {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Transmission Move Log: left side, aligned under the board, always visible */}
+            <div className="max-w-[720px] mx-auto">
+              <MoveHistory
+                history={gameState.moveHistory}
+                activePly={gameState.currentPly}
+                isReplay={gameState.isReplay}
+                onSeek={handleSeek}
+                pgnHeaders={gameState.pgnHeaders}
+              />
             </div>
 
             {/* Captured Pieces Tray */}
@@ -296,7 +582,7 @@ export const App: React.FC = () => {
             />
           </div>
 
-          {/* Right Column: Controls, Optical HUD, Transmission Log */}
+          {/* Right Column: Controls, Optical HUD, Light Vocabulary */}
           <div className="lg:col-span-5 xl:col-span-4 space-y-4">
             {/* Optical Field Flux Balance Meter */}
             <OpticalHUD
@@ -305,17 +591,29 @@ export const App: React.FC = () => {
               fullMoves={gameState.fullMoves}
               showBeams={showBeams}
               onToggleBeams={handleToggleBeams}
+              lightOpacity={lightOpacity}
+              onChangeLightOpacity={handleChangeLightOpacity}
+              emissionTypes={emissionTypes}
+              onToggleEmissionType={handleToggleEmissionType}
+              onEnableAllEmission={handleEnableAllEmission}
+              onDisableAllEmission={handleDisableAllEmission}
+              lightColorFilter={lightColorFilter}
+              onChangeLightColorFilter={handleChangeLightColorFilter}
             />
 
             {/* Sandbox & Game Controls */}
             <GameControls
               flipped={flipped}
-              canUndo={gameState.moveHistory.length > 0}
+              canUndo={gameState.isReplay ? gameState.currentPly >= 0 : gameState.moveHistory.length > 0}
               currentFen={gameState.fen}
               pieceStyle={pieceStyle}
               boardMode={boardMode}
               interactionMode={interactionMode}
               selectedCount={selectedSquares.size}
+              influenceView={influenceView}
+              influenceTempo={influenceTempo}
+              onToggleInfluenceView={handleToggleInfluenceView}
+              onChangeInfluenceTempo={handleChangeInfluenceTempo}
               whitePieceCount={whitePieceCount}
               blackPieceCount={blackPieceCount}
               onReset={handleReset}
@@ -330,10 +628,11 @@ export const App: React.FC = () => {
               onSelectAll={handleSelectAll}
               onLoadPreset={handleLoadPreset}
               onLoadCustomFen={handleLoadCustomFen}
+              onLoadPgn={handleLoadPgn}
             />
 
-            {/* Transmission Move Log */}
-            <MoveHistory history={gameState.moveHistory} />
+            {/* Light Type Vocabulary */}
+            <LightTypeLegend />
 
             {/* Optical Beam Morphology Note */}
             <div className="bg-white border border-slate-200 rounded-xl p-3 text-xs text-slate-500 space-y-1.5 shadow-xs">
@@ -343,7 +642,7 @@ export const App: React.FC = () => {
               </div>
               <p className="text-[11px] leading-relaxed text-slate-600">
                 Sharper shapes project longer range; softer shapes project shorter range:
-                <strong className="text-slate-800 block mt-1">King (Range 1)</strong> Regular symmetrical octagon (soft, bounded 1-square perimeter).
+                <strong className="text-slate-800 block mt-1">King (Range 1)</strong> Thick square frame: fills to the touching edge, stops short of the far edge.
                 <strong className="text-slate-800 block">Pawn (Range 1 diag)</strong> Compact blunt V with short rounded arms (low range).
                 <strong className="text-slate-800 block">Knight (Range ~2)</strong> Subtly contoured octagon with gentle waists (intermediate range).
                 <strong className="text-slate-800 block">Rook (Range 7)</strong> Orthogonal cross glass prism (+).
@@ -353,6 +652,7 @@ export const App: React.FC = () => {
             </div>
           </div>
         </div>
+        )}
       </main>
     </div>
   );

@@ -1,28 +1,38 @@
 import React from 'react';
 import { PieceType, PieceColor } from '../../core/types';
+import { PiecePaint, mixHex, paintTintHex } from '../../core/paintEngine';
 
 interface ClassicPieceProps {
   type: PieceType;
   color: PieceColor;
   className?: string;
   isCheck?: boolean;
+  paint?: PiecePaint | null;
 }
 
 interface PieceSvgProps {
   color: PieceColor;
   className?: string;
+  paint?: PiecePaint | null;
 }
 
-function getPieceColors(color: PieceColor): { fill: string; accent: string } {
+function getPieceColors(
+  color: PieceColor,
+  paint?: PiecePaint | null
+): { fill: string; accent: string } {
   const isWhite = color === 'w';
+  const baseFill = isWhite ? '#ffffff' : '#000000';
   return {
-    fill: isWhite ? '#2563eb' : '#e11d48',
-    accent: '#ffffff',
+    fill:
+      paint && paint.strength > 0
+        ? mixHex(baseFill, paintTintHex(paint.hue, color), paint.strength)
+        : baseFill,
+    accent: isWhite ? '#000000' : '#ffffff',
   };
 }
 
-export const ClassicPawn: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill, accent } = getPieceColors(color);
+export const ClassicPawn: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill, accent } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <path
@@ -44,8 +54,8 @@ export const ClassicPawn: React.FC<PieceSvgProps> = ({ color, className = '' }) 
   );
 };
 
-export const ClassicRook: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill, accent } = getPieceColors(color);
+export const ClassicRook: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill, accent } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <g fill={fill} fillRule="evenodd" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -60,8 +70,8 @@ export const ClassicRook: React.FC<PieceSvgProps> = ({ color, className = '' }) 
   );
 };
 
-export const ClassicKnight: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill } = getPieceColors(color);
+export const ClassicKnight: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <g fill="none" fillRule="evenodd" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -94,8 +104,8 @@ export const ClassicKnight: React.FC<PieceSvgProps> = ({ color, className = '' }
   );
 };
 
-export const ClassicBishop: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill, accent } = getPieceColors(color);
+export const ClassicBishop: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill, accent } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <g fill="none" fillRule="evenodd" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -111,8 +121,8 @@ export const ClassicBishop: React.FC<PieceSvgProps> = ({ color, className = '' }
   );
 };
 
-export const ClassicQueen: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill, accent } = getPieceColors(color);
+export const ClassicQueen: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill, accent } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <g fill={fill} fillRule="evenodd" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -133,8 +143,8 @@ export const ClassicQueen: React.FC<PieceSvgProps> = ({ color, className = '' })
   );
 };
 
-export const ClassicKing: React.FC<PieceSvgProps> = ({ color, className = '' }) => {
-  const { fill, accent } = getPieceColors(color);
+export const ClassicKing: React.FC<PieceSvgProps> = ({ color, className = '', paint }) => {
+  const { fill, accent } = getPieceColors(color, paint);
   return (
     <svg viewBox="0 0 45 45" className={`w-full h-full select-none ${className}`} xmlns="http://www.w3.org/2000/svg">
       <g fill="none" fillRule="evenodd" stroke="#000000" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -166,20 +176,21 @@ export const ClassicPiece: React.FC<ClassicPieceProps> = ({
   type,
   color,
   className = '',
+  paint = null,
 }) => {
   switch (type) {
     case 'p':
-      return <ClassicPawn color={color} className={className} />;
+      return <ClassicPawn color={color} className={className} paint={paint} />;
     case 'r':
-      return <ClassicRook color={color} className={className} />;
+      return <ClassicRook color={color} className={className} paint={paint} />;
     case 'n':
-      return <ClassicKnight color={color} className={className} />;
+      return <ClassicKnight color={color} className={className} paint={paint} />;
     case 'b':
-      return <ClassicBishop color={color} className={className} />;
+      return <ClassicBishop color={color} className={className} paint={paint} />;
     case 'q':
-      return <ClassicQueen color={color} className={className} />;
+      return <ClassicQueen color={color} className={className} paint={paint} />;
     case 'k':
-      return <ClassicKing color={color} className={className} />;
+      return <ClassicKing color={color} className={className} paint={paint} />;
     default:
       return null;
   }

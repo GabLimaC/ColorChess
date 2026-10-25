@@ -1,5 +1,6 @@
 import React from 'react';
 import { PieceType, PieceColor } from '../../core/types';
+import { PiecePaint } from '../../core/paintEngine';
 import { PawnPrism } from './PawnPrism';
 import { KnightPrism } from './KnightPrism';
 import { BishopPrism } from './BishopPrism';
@@ -16,6 +17,7 @@ export interface PiecePrismProps {
   pieceStyle?: PieceStyle;
   className?: string;
   isCheck?: boolean;
+  paint?: PiecePaint | null;
 }
 
 export const PiecePrism: React.FC<PiecePrismProps> = ({
@@ -23,25 +25,34 @@ export const PiecePrism: React.FC<PiecePrismProps> = ({
   color,
   pieceStyle = 'custom',
   className = '',
-  isCheck = false
+  isCheck = false,
+  paint = null
 }) => {
   if (pieceStyle === 'classic') {
-    return <ClassicPiece type={type} color={color} className={className} isCheck={isCheck} />;
+    return (
+      <ClassicPiece
+        type={type}
+        color={color}
+        className={className}
+        isCheck={isCheck}
+        paint={paint}
+      />
+    );
   }
 
   switch (type) {
     case 'p':
-      return <PawnPrism color={color} className={className} isCheck={isCheck} />;
+      return <PawnPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     case 'n':
-      return <KnightPrism color={color} className={className} isCheck={isCheck} />;
+      return <KnightPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     case 'b':
-      return <BishopPrism color={color} className={className} isCheck={isCheck} />;
+      return <BishopPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     case 'r':
-      return <RookPrism color={color} className={className} isCheck={isCheck} />;
+      return <RookPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     case 'q':
-      return <QueenPrism color={color} className={className} isCheck={isCheck} />;
+      return <QueenPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     case 'k':
-      return <KingPrism color={color} className={className} isCheck={isCheck} />;
+      return <KingPrism color={color} className={className} isCheck={isCheck} paint={paint} />;
     default:
       return null;
   }

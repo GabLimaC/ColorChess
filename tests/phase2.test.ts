@@ -246,11 +246,11 @@ describe('Phase 2: Color Projection & Flat Hue Calculation', () => {
     it('should configure pure black borders on both White and Black pieces', () => {
       const whiteTheme = getTranslucentTheme('w');
       expect(whiteTheme.stroke).toBe('#000000');
-      expect(whiteTheme.glassFill).toBe('#2563eb');
+      expect(whiteTheme.glassFill).toBe('#ffffff');
 
       const blackTheme = getTranslucentTheme('b');
       expect(blackTheme.stroke).toBe('#000000');
-      expect(blackTheme.glassFill).toBe('#e11d48');
+      expect(blackTheme.glassFill).toBe('#000000');
     });
 
     it('should define a black border outline for laser beams', () => {
@@ -362,11 +362,11 @@ describe('Phase 2: Color Projection & Flat Hue Calculation', () => {
     it('should allow toggling between custom prism and classic Staunton piece representations', () => {
       // Custom piece style uses the optical prism geometry
       const customThemeWhite = getTranslucentTheme('w');
-      expect(customThemeWhite.glassFill).toBe('#2563eb');
+      expect(customThemeWhite.glassFill).toBe('#ffffff');
       expect(customThemeWhite.stroke).toBe('#000000');
 
       const customThemeBlack = getTranslucentTheme('b');
-      expect(customThemeBlack.glassFill).toBe('#e11d48');
+      expect(customThemeBlack.glassFill).toBe('#000000');
       expect(customThemeBlack.stroke).toBe('#000000');
     });
   });
@@ -425,11 +425,11 @@ describe('Phase 2: Color Projection & Flat Hue Calculation', () => {
 
     it('should maintain consistent team piece fills and black borders across board modes', () => {
       const whiteTheme = getTranslucentTheme('w');
-      expect(whiteTheme.glassFill).toBe('#2563eb');
+      expect(whiteTheme.glassFill).toBe('#ffffff');
       expect(whiteTheme.stroke).toBe('#000000');
 
       const blackTheme = getTranslucentTheme('b');
-      expect(blackTheme.glassFill).toBe('#e11d48');
+      expect(blackTheme.glassFill).toBe('#000000');
       expect(blackTheme.stroke).toBe('#000000');
     });
   });

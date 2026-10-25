@@ -137,6 +137,49 @@ describe('Optical Ray-Casting & Field Generation', () => {
     expect(field.totalBlueFlux).toBe(field.totalRedFlux);
   });
 
+  it('should filter emitted light by color channel', () => {
+    const game = new OpticalChessGame();
+    const pieces = game.getAllPieces();
+    const allField = computeOpticalField(pieces);
+    const blueField = computeOpticalField(pieces, { lightColorFilter: 'blue' });
+    const redField = computeOpticalField(pieces, { lightColorFilter: 'red' });
+
+    // Blue-only: white pieces emit, black pieces do not
+    expect(blueField.totalBlueFlux).toBe(allField.totalBlueFlux);
+    expect(blueField.totalRedFlux).toBe(0);
+    expect(blueField.rays.every(r => r.sourcePiece.color === 'w')).toBe(true);
+
+    // Red-only: black pieces emit, white pieces do not
+    expect(redField.totalRedFlux).toBe(allField.totalRedFlux);
+    expect(redField.totalBlueFlux).toBe(0);
+    expect(redField.rays.every(r => r.sourcePiece.color === 'b')).toBe(true);
+  });
+
+  it('should light only disputed squares when filtering by disputed', () => {
+    // White rook on a1 and black rook on h1 contest the b1..g1 corridor
+    const pieces = [
+      { id: 'w-r-a1', type: 'r' as const, color: 'w' as const, square: 'a1' as const },
+      { id: 'b-r-h1', type: 'r' as const, color: 'b' as const, square: 'h1' as const },
+    ];
+    const field = computeOpticalField(pieces, { lightColorFilter: 'disputed' });
+
+    // Contested squares carry both blue and red light
+    for (const sq of ['b1', 'c1', 'd1', 'e1', 'f1', 'g1'] as const) {
+      expect(field.squares[sq].isLit).toBe(true);
+      expect(field.squares[sq].totalBlue).toBeGreaterThan(0);
+      expect(field.squares[sq].totalRed).toBeGreaterThan(0);
+    }
+
+    // Single-color squares are hidden
+    for (const sq of ['a1', 'h1', 'a2', 'h2', 'd4'] as const) {
+      expect(field.squares[sq].isLit).toBe(false);
+    }
+
+    // Flux counts only the disputed corridor
+    expect(field.totalBlueFlux).toBe(6);
+    expect(field.totalRedFlux).toBe(6);
+  });
+
   it('should block sliding rays completely at the first obstacle (strict 100% occlusion)', () => {
     // Rook on a1 with pawn on a2 and empty board beyond
     const testPieces = [
@@ -157,5 +200,24 @@ describe('Optical Ray-Casting & Field Generation', () => {
       expect(field.squares[sq].totalBlue).toBe(0);
       expect(field.squares[sq].isLit).toBe(false);
     }
+  });
+
+  it('should mark sliding rays that terminate as blocked', () => {
+    // Rook on a1 blocked by a pawn on a2
+    const testPieces = [
+      { id: 'w-r-a1', type: 'r' as const, color: 'w' as const, square: 'a1' as const },
+      { id: 'w-p-a2', type: 'p' as const, color: 'w' as const, square: 'a2' as const },
+    ];
+    const field = computeOpticalField(testPieces);
+
+    // Ray up file a terminates on the a2 pawn: blocked
+    const upRay = field.rays.find(r => r.from === 'a1' && r.to === 'a2');
+    expect(upRay).toBeDefined();
+    expect(upRay!.blocked).toBe(true);
+
+    // Ray along rank 1 runs to the board edge: also blocked (terminated at the edge)
+    const rankRay = field.rays.find(r => r.from === 'a1' && r.to === 'h1');
+    expect(rankRay).toBeDefined();
+    expect(rankRay!.blocked).toBe(true);
   });
 });

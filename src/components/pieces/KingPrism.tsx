@@ -1,15 +1,17 @@
 import React from 'react';
 import { PieceColor } from '../../core/types';
 import { getTranslucentTheme } from './prismTheme';
+import { PiecePaint } from '../../core/paintEngine';
 
 interface PieceProps {
   color: PieceColor;
   className?: string;
   isCheck?: boolean;
+  paint?: PiecePaint | null;
 }
 
-export const KingPrism: React.FC<PieceProps> = ({ color, className = '' }) => {
-  const theme = getTranslucentTheme(color);
+export const KingPrism: React.FC<PieceProps> = ({ color, className = '', paint }) => {
+  const theme = getTranslucentTheme(color, paint);
 
   // Outer regular octagon vertices (R = 28)
   const outerOctagon = "78,50 69.8,69.8 50,78 30.2,69.8 22,50 30.2,30.2 50,22 69.8,30.2";
